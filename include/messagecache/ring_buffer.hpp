@@ -134,7 +134,9 @@ public:
 
         constexpr auto begin() const -> T*
         {
-            return start_ + HEADER_LEN;
+            // returns nullptr if start_ == nullptr,
+            // else start_ + HEADER_LEN
+            return start_ + (HEADER_LEN * (start_ != nullptr));
         }
 
         constexpr auto cbegin() const -> const T*
@@ -227,7 +229,6 @@ public:
     // try to allocate a slot of the given size
     auto try_alloc(std::size_t slot_size) -> slot
     {
-        assert(slot_size <= SIZE);
         auto* start = getNextWritePointer(slot_size);
         if(start) {
             return slot{*this, start, slot_size};
@@ -330,8 +331,7 @@ private:
     {
         std::size_t required_size = data_size + HEADER_LEN;
         if(required_size > raw_.size()) {
-            assert(false && "Trying to allocate too many bytes in RingBuffer");
-            std::terminate(); // FIXME: What to do now?
+            return nullptr; // cannot allocate this many bytes.
         }
         assert(required_size <= raw_.size());
 

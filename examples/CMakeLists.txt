@@ -4,9 +4,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include(cmake/sanitizers.cmake)
-include(cmake/asio.cmake)
-
 add_executable(main main.cpp)
 
 add_dependencies(main asio-project)
