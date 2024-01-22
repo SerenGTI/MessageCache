@@ -31,7 +31,7 @@ public:
           free_ptr_(raw_.data())
     {}
 
-    ~ring_buffer()
+    ~ring_buffer() noexcept
     {
         delete[] raw_ptr_;
     };
@@ -63,7 +63,7 @@ public:
          * @param start  the start pointer of the slot. that is *start is the size of the slot
          * @param size   the size of the slot.
          */
-        constexpr slot(ring_buffer& buffer, T* start, std::size_t size)
+        constexpr slot(ring_buffer& buffer, T* start, std::size_t size) noexcept
             : buf_(std::addressof(buffer)),
               start_(start),
               size_(size)
@@ -110,19 +110,19 @@ public:
         }
 
         // returns true if the slot points to a valid range of memory
-        constexpr auto valid() const -> bool
+        constexpr auto valid() const noexcept -> bool
         {
             return start_ != nullptr and buf_ != nullptr;
         }
 
-        constexpr operator bool() const
+        constexpr operator bool() const noexcept
         {
             return valid();
         }
 
         // Releases the slot's data.
         // Invalidates all iterators
-        void release()
+        void release() noexcept
         {
             if(start_) {
                 discard();
@@ -132,24 +132,24 @@ public:
             }
         }
 
-        constexpr auto begin() const -> T*
+        constexpr auto begin() const noexcept -> T*
         {
             // returns nullptr if start_ == nullptr,
             // else start_ + HEADER_LEN
             return start_ + (HEADER_LEN * (start_ != nullptr));
         }
 
-        constexpr auto cbegin() const -> const T*
+        constexpr auto cbegin() const noexcept -> const T*
         {
             return begin();
         }
 
-        constexpr auto end() const -> T*
+        constexpr auto end() const noexcept -> T*
         {
             return begin() + size_;
         }
 
-        constexpr auto cend() const -> const T*
+        constexpr auto cend() const noexcept -> const T*
         {
             return cbegin() + size_;
         }
@@ -227,7 +227,7 @@ public:
     };
 
     // try to allocate a slot of the given size
-    auto try_alloc(std::size_t slot_size) -> slot
+    auto try_alloc(std::size_t slot_size) noexcept -> slot
     {
         auto* start = getNextWritePointer(slot_size);
         if(start) {
@@ -238,13 +238,13 @@ public:
 
 private:
 
-    constexpr static auto lengthAt(T* const loc) -> std::size_t
+    constexpr static auto lengthAt(T* const loc) noexcept -> std::size_t
     {
         auto* len_field = reinterpret_cast<std::uint16_t*>(loc);
         return *len_field;
     }
 
-    constexpr auto getLengthAndFlag(T* const start) -> std::pair<std::size_t, bool>
+    constexpr auto getLengthAndFlag(T* const start) noexcept -> std::pair<std::size_t, bool>
     {
         std::size_t length = lengthAt(start);
 
@@ -254,7 +254,7 @@ private:
         return {length, unused};
     }
 
-    constexpr auto updateFreePtr()
+    constexpr auto updateFreePtr() noexcept
     {
         // synchronize memory to ensure we see updated slot flags
         synchronize();
@@ -327,7 +327,7 @@ private:
      * @param  data_size Size of the slot to reserve
      * @return           Pointer to the begin of the slot
      */
-    auto getNextWritePointer(std::size_t data_size) -> T*
+    auto getNextWritePointer(std::size_t data_size) noexcept -> T*
     {
         std::size_t required_size = data_size + HEADER_LEN;
         if(required_size > raw_.size()) {
@@ -393,7 +393,7 @@ private:
         return nullptr;
     }
 
-    constexpr auto setLengthAt(T* begin, std::uint16_t size) -> T*
+    constexpr auto setLengthAt(T* begin, std::uint16_t size) noexcept -> T*
     {
         auto* len = reinterpret_cast<std::uint16_t*>(begin);
         *len = size;
