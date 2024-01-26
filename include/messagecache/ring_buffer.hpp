@@ -1,12 +1,12 @@
 #pragma once
 
 #include <atomic>
+#include <cassert>
 #include <cstdint>
-#include <memory>
-#include <span>
 #include <iomanip>
 #include <iostream>
-#include <cassert>
+#include <memory>
+#include <span>
 
 namespace messagecache {
 
@@ -21,6 +21,7 @@ template<std::size_t SIZE>
 class ring_buffer
 {
     constexpr static std::size_t HEADER_LEN = 4;
+
 public:
     using T = std::byte;
 
@@ -31,10 +32,7 @@ public:
           free_ptr_(raw_.data())
     {}
 
-    ~ring_buffer() noexcept
-    {
-        delete[] raw_ptr_;
-    };
+    ~ring_buffer() noexcept { delete[] raw_ptr_; };
 
     constexpr ring_buffer(ring_buffer&& other) noexcept
         : raw_ptr_(other.raw_ptr_),
@@ -60,22 +58,17 @@ public:
 
         /**
          * @param buffer the corresponding buffer
-         * @param start  the start pointer of the slot. that is *start is the size of the slot
+         * @param start  the start pointer of the slot. that is *start is the size of the
+         * slot
          * @param size   the size of the slot.
          */
         constexpr slot(ring_buffer& buffer, T* start, std::size_t size) noexcept
-            : buf_(std::addressof(buffer)),
-              start_(start),
-              size_(size)
+            : buf_(std::addressof(buffer)), start_(start), size_(size)
         {}
 
     public:
         // default-constructed slot points to invalid memory region
-        constexpr slot() noexcept
-            : buf_(nullptr),
-              start_(nullptr),
-              size_(0)
-        {}
+        constexpr slot() noexcept : buf_(nullptr), start_(nullptr), size_(0) {}
 
         // delete copy
         constexpr slot(const slot&) = delete;
@@ -95,19 +88,14 @@ public:
             return *this;
         }
         constexpr slot(slot&& other) noexcept
-            : buf_(other.buf_),
-              start_(other.start_),
-              size_(other.size_)
+            : buf_(other.buf_), start_(other.start_), size_(other.size_)
         {
             other.start_ = nullptr;
             other.size_ = 0;
         }
 
         // releases the slot's data
-        constexpr ~slot() noexcept
-        {
-            release();
-        }
+        constexpr ~slot() noexcept { release(); }
 
         // returns true if the slot points to a valid range of memory
         constexpr auto valid() const noexcept -> bool
@@ -115,10 +103,7 @@ public:
             return start_ != nullptr and buf_ != nullptr;
         }
 
-        constexpr operator bool() const noexcept
-        {
-            return valid();
-        }
+        constexpr operator bool() const noexcept { return valid(); }
 
         // Releases the slot's data.
         // Invalidates all iterators
@@ -139,20 +124,11 @@ public:
             return start_ + (HEADER_LEN * (start_ != nullptr));
         }
 
-        constexpr auto cbegin() const noexcept -> const T*
-        {
-            return begin();
-        }
+        constexpr auto cbegin() const noexcept -> const T* { return begin(); }
 
-        constexpr auto end() const noexcept -> T*
-        {
-            return begin() + size_;
-        }
+        constexpr auto end() const noexcept -> T* { return begin() + size_; }
 
-        constexpr auto cend() const noexcept -> const T*
-        {
-            return cbegin() + size_;
-        }
+        constexpr auto cend() const noexcept -> const T* { return cbegin() + size_; }
 
         /**
          * Returns a read-only std::span that spans the slot's memory region.
@@ -203,7 +179,8 @@ public:
             std::stringstream ss;
             const auto* ptr = reinterpret_cast<const unsigned char*>(start_);
             for(std::size_t i = 0; i < size_ + HEADER_LEN; ++i) {
-                ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(ptr[i]) << " ";
+                ss << std::hex << std::setw(2) << std::setfill('0')
+                   << static_cast<int>(ptr[i]) << " ";
             }
             std::cout << ss.str() << std::endl;
         }
@@ -211,6 +188,15 @@ public:
     private:
         constexpr void discard()
         {
+            // OPTIMIZATION: try to advance the free pointer immediately if it points to
+            // the start of the current slot
+            auto* old_value = start_;
+            if(buf_->free_ptr_.compare_exchange_strong(old_value,
+                                                       start_ + size_ + HEADER_LEN,
+                                                       std::memory_order_relaxed)) {
+                return;
+            }
+
             // mark the slot as OK to free.
             auto* unused_flag = reinterpret_cast<std::uint16_t*>(start_ + 2);
             *unused_flag = static_cast<std::uint16_t>(0b1111'1111'1111'1111);
@@ -221,7 +207,8 @@ public:
         ring_buffer* buf_;
 
         T* start_;
-        std::size_t size_;
+        std::size_t
+            size_; // size of the slot visible to the application, *without* header
 
         std::atomic_bool flag_;
     };
@@ -237,14 +224,14 @@ public:
     }
 
 private:
-
     constexpr static auto lengthAt(T* const loc) noexcept -> std::size_t
     {
         auto* len_field = reinterpret_cast<std::uint16_t*>(loc);
         return *len_field;
     }
 
-    constexpr auto getLengthAndFlag(T* const start) noexcept -> std::pair<std::size_t, bool>
+    constexpr auto getLengthAndFlag(T* const start) noexcept
+        -> std::pair<std::size_t, bool>
     {
         std::size_t length = lengthAt(start);
 
@@ -269,7 +256,7 @@ private:
             //      xxxxxxxxxxx                    000
             // .(2).             .........(1).........
 
-            for(T* i = fp; i < raw_.data() + raw_.size() - HEADER_LEN; ) {
+            for(T* i = fp; i < raw_.data() + raw_.size() - HEADER_LEN;) {
                 // case (1)
                 auto [length, unused] = getLengthAndFlag(i);
                 if(length == 0) {
@@ -278,22 +265,20 @@ private:
                 }
                 if(length > 0 and unused) {
                     i += length + HEADER_LEN;
-                }
-                else {
+                } else {
                     free_ptr_.store(i, std::memory_order_relaxed);
-                    // spdlog::info("update wp<fp={}", i-raw_.data());
+                    // spdlog::debug("update wp<fp={}", i-raw_.data());
                     return;
                 }
             }
-            for(T* i = raw_.data(); i < wp; ) {
+            for(T* i = raw_.data(); i < wp;) {
                 // case (2)
                 auto [length, unused] = getLengthAndFlag(i);
                 if(length > 0 and unused) {
                     i += length + HEADER_LEN;
-                }
-                else {
+                } else {
                     free_ptr_.store(i, std::memory_order_relaxed);
-                    // spdlog::info("update wp<fp={}", i-raw_.data());
+                    // spdlog::debug("update wp<fp={}", i-raw_.data());
                     return;
                 }
             }
@@ -303,14 +288,14 @@ private:
             // [==== len,flag ==== ==== ==== ==== ====]
             //       fp            wp
             //  xxxxx              xxxxxxxxxxxxxxxxxxx
-            for(T* i = fp; i < wp; ) {
+            for(T* i = fp; i < wp;) {
                 auto [length, unused] = getLengthAndFlag(i);
                 if(unused) {
                     i += length + HEADER_LEN;
-                }
-                else {
+                } else {
                     free_ptr_.store(i, std::memory_order_relaxed);
-                    // spdlog::info("update fp {}->{}", fp-raw_.data(), i-raw_.data()/*, active_slots_.load(std::memory_order_relaxed)*/);
+                    // spdlog::debug("update fp {}->{}", fp-raw_.data(), i-raw_.data()/*,
+                    // active_slots_.load(std::memory_order_relaxed)*/);
                     return;
                 }
             }
@@ -343,13 +328,13 @@ private:
         auto* const wp = write_ptr_.load(std::memory_order_relaxed);
         auto* const fp = free_ptr_.load(std::memory_order_relaxed);
 
-        // spdlog::info("new slot with fp{}, wp{}", fp - raw_.data(), wp - raw_.data());
+        // spdlog::debug("new slot with fp{}, wp{}", fp - raw_.data(), wp - raw_.data());
 
         if(wp == fp) {
             // buffer is empty
             free_ptr_.store(raw_.data(), std::memory_order_relaxed);
             write_ptr_.store(raw_.data() + required_size, std::memory_order_relaxed);
-            // spdlog::info("(empty)");
+            // spdlog::debug("(empty)");
             return setLengthAt(raw_.data(), data_size);
         }
         if(wp < fp) {
@@ -359,9 +344,11 @@ private:
 
             std::size_t size_avail_between = fp - wp;
             if(required_size < size_avail_between) {
-                // keep the free and write pointer separated while the ring buffer is non-empty
+                // keep the free and write pointer separated while the ring buffer is
+                // non-empty
                 write_ptr_.store(wp + required_size);
-                // spdlog::info("(2) getting slot wp{}, fp{}", wp-raw_.data(), fp-raw_.data());
+                // spdlog::debug("(2) getting slot wp{}, fp{}", wp-raw_.data(),
+                // fp-raw_.data());
                 return setLengthAt(wp, data_size);
             }
         } else {
@@ -374,19 +361,20 @@ private:
             if(required_size <= size_avail_at_end) {
                 // (1)
                 write_ptr_.store(wp + required_size);
-                // spdlog::info("(3) getting slot wp{}, fp{}", wp-raw_.data(), fp-raw_.data());
+                // spdlog::debug("(3) getting slot wp{}, fp{}", wp-raw_.data(),
+                // fp-raw_.data());
                 return setLengthAt(wp, data_size);
             }
 
             std::size_t size_avail_at_front = fp - raw_.data();
             if(required_size < size_avail_at_front) {
-                // keep the free and write pointer separated while the ring buffer is filled
-                // (2)
-                // ensure the end is zeroed to avoid buggy freeing near the end
+                // keep the free and write pointer separated while the ring buffer is
+                // filled (2) ensure the end is zeroed to avoid buggy freeing near the end
                 std::fill(wp, raw_.data() + raw_.size(), static_cast<T>(0));
 
                 write_ptr_.store(raw_.data() + required_size, std::memory_order_relaxed);
-                // spdlog::info("(4) getting slot wp{}, fp{}", wp-raw_.data(), fp-raw_.data());
+                // spdlog::debug("(4) getting slot wp{}, fp{}", wp-raw_.data(),
+                // fp-raw_.data());
                 return setLengthAt(raw_.data(), data_size);
             }
         }
@@ -424,4 +412,4 @@ private:
 
     std::atomic_bool flag_;
 };
-} // namespace nvramd::common
+} // namespace messagecache

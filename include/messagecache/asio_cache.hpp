@@ -26,11 +26,9 @@ public:
     {
     private:
         friend asio_cache;
-    public:
 
-        constexpr slot() noexcept
-            : ring_buffer<SIZE>::slot()
-        {}
+    public:
+        constexpr slot() noexcept : ring_buffer<SIZE>::slot() {}
 
         constexpr slot(asio_cache& buffer, T* start, std::size_t size)
             : ring_buffer<SIZE>::slot(buffer, start, size)
@@ -73,36 +71,42 @@ public:
 
     // asynchronously attempt to allocate a new buffer slot with the given size
     template<typename CompletionToken>
-    auto alloc(std::size_t slot_size, CompletionToken&& token)
+    auto alloc(std::size_t slot_size, CompletionToken&& token) noexcept
     {
         return asio::async_initiate<decltype(token), void(asio::error_code, slot)>(
             [this, slot_size](auto&& token) {
                 auto executor = asio::get_associated_executor(token);
-                auto state = asio::cancellation_state(asio::get_associated_cancellation_slot(token));
+                auto state = asio::cancellation_state(
+                    asio::get_associated_cancellation_slot(token));
 
-                asio::post(executor, [this, slot_size, token = std::forward<decltype(token)>(token), state]() mutable {
-                    std::error_code e;
-                    if(state.cancelled() != asio::cancellation_type::none) {
-                        // function is cancelled
-                        e = asio::error::operation_aborted;
-                        std::move(token)(e, slot{}); // default-constructed slot points to invalid memory region
-                        return;
-                    }
+                asio::post(executor,
+                           [this,
+                            slot_size,
+                            token = std::forward<decltype(token)>(token),
+                            state]() mutable {
+                               std::error_code e;
+                               if(state.cancelled() != asio::cancellation_type::none) {
+                                   // function is cancelled
+                                   e = asio::error::operation_aborted;
+                                   std::move(
+                                       token)(e,
+                                              slot{}); // default-constructed slot points
+                                                       // to invalid memory region
+                                   return;
+                               }
 
-                    // try to allocate
-                    auto slot = this->try_alloc(slot_size);
-                    if(slot) {
-                        // allocation successful
-                        std::move(token)(e, std::move(slot));
-                    }
-                    else{
-                        // yield
-                        alloc(slot_size, std::move(token));
-                    }
-                });
+                               // try to allocate
+                               auto slot = this->try_alloc(slot_size);
+                               if(slot) {
+                                   // allocation successful
+                                   std::move(token)(e, std::move(slot));
+                               } else {
+                                   // yield
+                                   alloc(slot_size, std::move(token));
+                               }
+                           });
             },
             token);
     }
-
 };
-}
+} // namespace messagecache
