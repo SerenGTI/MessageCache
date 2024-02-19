@@ -7,8 +7,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(main main.cpp)
 
 add_dependencies(main asio-project)
-target_include_directories(main PRIVATE ${CMAKE_SOURCE_DIR}/include
-                                        ${ASIO_INCLUDE_DIR})
+target_link_libraries(main messagecache)
+target_include_directories(main PRIVATE ${CMAKE_SOURCE_DIR}/include ${ASIO_INCLUDE_DIR})
 
 target_compile_options(
   main
