@@ -3,12 +3,11 @@ cmake_minimum_required(VERSION 3.24)
 
 project(messagecache)
 project(messagecache LANGUAGES CXX)
-project(project_name VERSION "0.4.0")
-
+project(messagecache VERSION "0.4.0")
 
 add_library(${PROJECT_NAME} INTERFACE)
 target_include_directories(${PROJECT_NAME} INTERFACE
-    include
+    $<INSTALL_INTERFACE:include/coromess>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 
