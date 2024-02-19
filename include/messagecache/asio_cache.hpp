@@ -53,7 +53,7 @@ public:
         auto getWriteBuffer() const -> asio::mutable_buffer
         {
             // TODO: synchronize before?
-            return {this->begin(), this->end() - this->begin()};
+            return {this->begin(), static_cast<std::size_t>(this->end() - this->begin())};
         }
 
         /**
@@ -64,7 +64,7 @@ public:
         auto getConstBuffer() const -> asio::const_buffer
         {
             this->synchronize();
-            return getWriteBuffer();
+            return getWriteBuffer(); // a mutable_buffer is implicitly convertible to const_buffer
         }
     };
 
