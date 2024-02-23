@@ -17,22 +17,28 @@ namespace messagecache {
  * Slots represent contiguous memory regions that can be used arbitrarily
  * while the slot object is alive.
  */
-template<std::size_t SIZE>
-class ring_buffer
+template<std::size_t SIZE, typename Allocator = std::allocator<std::byte>>
+class ring_buffer : private Allocator
 {
     constexpr static std::size_t HEADER_LEN = 4;
 
 public:
     using T = std::byte;
 
+    using value_type = T;
+    using allocator_traits = std::allocator_traits<Allocator>;
+    using size_type = typename allocator_traits::size_type;
+
     constexpr ring_buffer()
-        : raw_ptr_(new T[SIZE + HEADER_LEN]),
+        : raw_ptr_(allocator_traits::allocate(*this, SIZE + HEADER_LEN)),
           raw_(raw_ptr_, SIZE + HEADER_LEN),
           write_ptr_(raw_.data()),
           free_ptr_(raw_.data())
     {}
 
-    ~ring_buffer() noexcept { delete[] raw_ptr_; };
+    ~ring_buffer() noexcept {
+        allocator_traits::deallocate(*this, raw_ptr_, SIZE + HEADER_LEN);
+    };
 
     constexpr ring_buffer(ring_buffer&& other) noexcept
         : raw_ptr_(other.raw_ptr_),
