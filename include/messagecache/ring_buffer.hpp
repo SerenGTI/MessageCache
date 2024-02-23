@@ -199,7 +199,7 @@ public:
             auto* old_value = start_;
             if(buf_->free_ptr_.compare_exchange_strong(old_value,
                                                        start_ + size_ + HEADER_LEN,
-                                                       std::memory_order_relaxed)) {
+                                                       std::memory_order_release)) {
                 return;
             }
 
@@ -226,7 +226,7 @@ public:
         if(start) {
             return slot{*this, start, slot_size};
         }
-        return {}; // default-constructed slot points to invalid memory region
+        return {}; // default-constructed slot points to nullptr memory region
     }
 
 private:
@@ -326,7 +326,7 @@ private:
         }
         assert(required_size <= raw_.size());
 
-        // TODO: This lock is only necessary for multiple producers
+        // TODO: This lock is only necessary for multiple consumers
         // auto _ = mtx_.scopedLock();
 
         updateFreePtr();
@@ -410,12 +410,22 @@ private:
     }
 
 private:
+    constexpr static std::size_t hardware_destructive_interference_size = 64ul;
+
+
     T* raw_ptr_;
     std::span<T, SIZE + HEADER_LEN> raw_;
 
-    std::atomic<T*> write_ptr_ = nullptr;
-    std::atomic<T*> free_ptr_ = nullptr;
+    alignas(hardware_destructive_interference_size) std::atomic_bool flag_;
 
-    std::atomic_bool flag_;
+    using cursor_type = std::atomic<T*>;
+    static_assert(cursor_type::is_always_lock_free);
+
+    // ensure the two pointers are on different cache lines
+    alignas(hardware_destructive_interference_size) cursor_type write_ptr_ = nullptr;
+    alignas(hardware_destructive_interference_size) cursor_type free_ptr_ = nullptr;
+
+    // do we need padding?..
+    // std::array<std::byte, hardware_destructive_interference_size - sizeof(cursor_type)> padding_;
 };
 } // namespace messagecache
